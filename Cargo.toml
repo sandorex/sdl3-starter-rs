@@ -1,0 +1,8 @@
+[package]
+name = "starter-rs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+sdl3-main = "0.6.2"
+sdl3-sys = { version = "0.6.3", features = ["build-from-source"] }
