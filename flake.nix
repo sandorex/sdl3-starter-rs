@@ -19,7 +19,7 @@
 
       # copied from 'android-project/app/build.gradle'
       androidVersion = {
-        buildTools = "35.0.0";
+        buildTools = "34.0.0";
         sdk = "35";
         ndk = "28.2.13676358";
         cmake = "3.22.1";
