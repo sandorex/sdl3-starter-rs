@@ -29,9 +29,16 @@
         platformVersions = [ androidVersion.sdk ];
         ndkVersions = [ androidVersion.ndk ];
         includeNDK = true;
+        # cmakeVersions = [ androidVersion.cmake ];
       };
 
       rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+        extensions = [
+          "rust-analyzer"
+          "rust-src"
+          "clippy"
+          "rustfmt"
+        ];
         targets = [
           "x86_64-unknown-linux-gnu"
           "aarch64-linux-android"
@@ -88,6 +95,8 @@
             androidComposition.platform-tools
             javaPackages.compiler.openjdk17
           ] ++ sdlPkgs;
+
+          RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
 
           # NOTE SDL3 cannot find video device, x11 or wayland without this
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath sdlPkgs;
