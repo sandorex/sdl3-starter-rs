@@ -3,6 +3,15 @@ name = "starter-rs"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "main"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[[bin]]
+name = "demo"
+path = "src/main.rs"
+
 [dependencies]
 sdl3-main = "0.6.2"
 sdl3-sys = { version = "0.6.3", features = ["build-from-source"] }

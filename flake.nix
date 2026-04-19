@@ -17,10 +17,10 @@
         };
       };
 
-      # TODO copy these from the SDL3
+      # copied from 'android-project/app/build.gradle'
       androidVersion = {
         buildTools = "35.0.0";
-        sdk = "36";
+        sdk = "35";
         ndk = "28.2.13676358";
         cmake = "3.22.1";
       };
@@ -93,7 +93,6 @@
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath nativeBuildInputs;
         };
 
-        # TODO add rust-overlay and aarch64-linux-android target
         android = pkgs.mkShell rec {
           inputsFrom = [ desktop ];
 
