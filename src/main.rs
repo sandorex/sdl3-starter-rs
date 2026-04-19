@@ -1,13 +1,15 @@
 mod sdl_helper;
 
-use std::{ffi::CStr, ptr::null};
-use sdl3_sys::everything::{SDL_Init, SDL_INIT_VIDEO, SDL_CreateWindow, SDL_Renderer, SDL_Window, SDL_DestroyWindow, SDL_DestroyRenderer, SDL_WindowFlags, SDL_CreateRenderer, SDL_SetAppMetadata, SDL_GetError};
+use std::{ffi::{CStr, CString, OsStr}, path::{Path, PathBuf}, ptr::null};
+use git2::{CertificateCheckStatus, build::RepoBuilder};
+use sdl3_sys::{everything::{SDL_CreateRenderer, SDL_CreateWindow, SDL_DestroyRenderer, SDL_DestroyWindow, SDL_GetError, SDL_INIT_VIDEO, SDL_Init, SDL_Renderer, SDL_SetAppMetadata, SDL_Window, SDL_WindowFlags}, filesystem::{SDL_Folder, SDL_GetUserFolder}, log::SDL_LOG_CATEGORY_SYSTEM};
 use sdl3_main::AppResult;
 use sdl3_sys::events::SDL_Event;
 
 struct MyAppState {
     window: *mut SDL_Window,
     renderer: *mut SDL_Renderer,
+    cloned: bool,
 }
 
 impl Drop for MyAppState {
@@ -59,12 +61,60 @@ impl sdl_helper::App for MyAppState {
 
             return Ok(MyAppState {
                 window,
-                renderer
+                renderer,
+                cloned: false,
             })
         }
     }
 
     fn iterate(&mut self) -> AppResult {
+        // sdl_sys:: SDL_RequestAndroidPermission
+        // SDL_RequestAndroidPermission
+        // sdl3_sys::everything::SDL_RequestAndroidPermission
+        // if cfg!(ANDROID) {
+        //     // sdl3_sys::everything::SDL_Request
+        // }
+        // let dir_path = SDL_GetUserFolder(SDL_Folder::DOWNLOADS);
+        // let dir_path = SDL_AndroidGetExternalStoragePath;
+
+        if !self.cloned {
+            self.cloned = true;
+
+            let dir_path = unsafe { sdl3_sys::filesystem::SDL_GetPrefPath(c"org.example".as_ptr(), c"sdl3-starter".as_ptr()) };
+
+            if dir_path.is_null() {
+                dbg_sdl_error("SDL_GetUserFolder failed");
+                return AppResult::Failure;
+            }
+
+            // log the path
+            unsafe { sdl3_sys::log::SDL_LogError(SDL_LOG_CATEGORY_SYSTEM.into(), dir_path) };
+
+            let dir_path_cstr = unsafe { CStr::from_ptr(dir_path) };
+            let dir_path = Path::new(dir_path_cstr.to_str().unwrap());
+
+
+            let url = "https://github.com/sandorex/arcam";
+            let mut callbacks = git2::RemoteCallbacks::new();
+            callbacks.certificate_check(|_cert, _host| {
+                // TODO this is as the certificates are broken on android build for some reason?
+                // Return true to accept the certificate despite errors
+                Ok(CertificateCheckStatus::CertificateOk)
+            });
+
+            let mut fetch_options = git2::FetchOptions::new();
+            fetch_options.remote_callbacks(callbacks);
+
+            // let repo = match Repository::clone(url, dir_path_cstr.to_string_lossy().to_string()) {
+            let repo = match RepoBuilder::new().fetch_options(fetch_options).clone(url, dir_path) {
+                Ok(repo) => repo,
+                Err(e) => {
+                    dbg_sdl_error(&format!("Repository::clone failed: {e}"));
+                    return AppResult::Failure;
+                },
+            };
+        }
+
         AppResult::Continue
     }
 
@@ -84,9 +134,12 @@ impl sdl_helper::App for MyAppState {
 sdl3_main!(MyAppState);
 
 pub fn dbg_sdl_error(msg: &str) {
-    println!("{msg}");
-    let error = unsafe { CStr::from_ptr(SDL_GetError()) };
-    let error = error.to_string_lossy();
-    println!("{error}");
+    // let error = unsafe { CStr::from_ptr(SDL_GetError()) };
+    // let error = error.to_string_lossy();
+
+    let msg = CString::new(msg).expect("could not convert msg to cstring");
+    unsafe { sdl3_sys::log::SDL_LogError(SDL_LOG_CATEGORY_SYSTEM.into(), msg.as_ptr()) };
+    unsafe { sdl3_sys::log::SDL_LogError(SDL_LOG_CATEGORY_SYSTEM.into(), SDL_GetError()) };
+    // unsafe { sdl3_sys::log::SDL_Log(SDL_GetError()) };
 }
 
