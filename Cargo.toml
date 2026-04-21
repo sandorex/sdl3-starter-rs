@@ -1,18 +1,18 @@
 [package]
-name = "starter-rs"
+name = "sdl_starter"
 version = "0.1.0"
 edition = "2024"
 
 [lib]
 name = "main"
 path = "src/lib.rs"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [[bin]]
 name = "demo"
 path = "src/main.rs"
 
 [dependencies]
-git2 = { version = "0.20.4", features = ["vendored-libgit2", "vendored-openssl", "https", "ssh"]}
+git2 = { version = "0.20.4", features = ["vendored-libgit2", "vendored-openssl", "https", "ssh"] }
 sdl3-main = "0.6.2"
 sdl3-sys = { version = "0.6.3", features = ["build-from-source"] }
