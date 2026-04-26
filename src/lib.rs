@@ -1,25 +1,79 @@
-pub mod ssl_cert;
+// pub mod ssl_cert;
 pub mod sdl3;
+pub mod renderer;
+pub mod gui;
 
-use std::{ffi::{CStr, CString, OsStr}, path::{Path, PathBuf}, ptr::null, str::FromStr};
-use git2::{CertificateCheckStatus, build::RepoBuilder};
-use sdl3_sys::{everything::{SDL_CreateRenderer, SDL_CreateWindow, SDL_DestroyRenderer, SDL_DestroyWindow, SDL_GetError, SDL_INIT_VIDEO, SDL_Init, SDL_Renderer, SDL_SetAppMetadata, SDL_Window, SDL_WindowFlags}, filesystem::{SDL_Folder, SDL_GetUserFolder}, log::SDL_LOG_CATEGORY_SYSTEM};
+use sdl3_sys::everything::{SDL_CreateWindow, SDL_DestroyWindow, SDL_INIT_VIDEO, SDL_Init, SDL_SetAppMetadata, SDL_Window, SDL_WindowFlags};
 use sdl3_main::AppResult;
 use sdl3_sys::events::SDL_Event;
 
+#[derive(Debug, Default)]
+pub struct Task {
+    pub finished: bool,
+    pub text: String,
+}
+
+pub struct TaskList<'a> {
+    pub tasks: &'a mut [Task],
+}
+
+impl<'a> egui::Widget for TaskList<'a> {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        // allocate more?
+        let (_, response) = ui.allocate_exact_size(
+            egui::vec2(100.0, 30.0),
+            egui::Sense::click()
+        );
+
+        for task in self.tasks {
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut task.finished, "");
+// egui::RichText::new("Strikethrough text").strikethrough()
+                let button = ui.add(
+                    egui::Label::new(
+                        if task.finished {
+                            egui::RichText::new(&task.text).strikethrough()
+                        } else {
+                            egui::RichText::new(&task.text)
+                        }
+                    )
+                    // .selectable(false)
+                    // .sense(egui::Sense::CLICK)
+                    .wrap()
+                );
+
+                // toggle the task
+                if button.interact(egui::Sense::CLICK).secondary_clicked() {
+                    button.context_menu(|ui| {
+                        ui.label("hello");
+                        // if ui.button("Close").clicked() {
+                        //     ui.close();
+                        // }
+                        //
+                        // if ui.button("Something").clicked() {
+                        //     ui.close();
+                        // }
+                    });
+                    // task.finished = !task.finished;
+                }
+            });
+        }
+
+        response
+    }
+}
+
 pub struct MyAppState {
     pub window: *mut SDL_Window,
-    pub renderer: *mut SDL_Renderer,
-    pub cloned: bool,
+    pub renderer: renderer::EguiSdl3Glow,
+    pub name: String,
+    pub age: i32,
+    pub tasks: Vec<Task>,
 }
 
 impl Drop for MyAppState {
     fn drop(&mut self) {
         unsafe {
-            if !self.renderer.is_null() {
-                SDL_DestroyRenderer(self.renderer);
-            }
-
             if !self.window.is_null() {
                 SDL_DestroyWindow(self.window);
             }
@@ -41,45 +95,78 @@ impl sdl3::App for MyAppState {
                 return Err(());
             }
 
-            let window = SDL_CreateWindow(title.as_ptr(), 640, 480, SDL_WindowFlags::RESIZABLE);
+            let window = SDL_CreateWindow(title.as_ptr(), 640, 480, SDL_WindowFlags::RESIZABLE | SDL_WindowFlags::OPENGL);
             if window.is_null() {
                 sdl_error_log("SDL_CreateWindow failed");
                 return Err(());
             }
 
-            let renderer = SDL_CreateRenderer(window, null());
-            if renderer.is_null() {
-                sdl_error_log("SDL_CreateRenderer failed");
-                return Err(());
-            }
-
-            use sdl3_sys::everything::{SDL_SetRenderDrawColor, SDL_RenderClear, SDL_RenderPresent};
-
-            // render some color
-            SDL_SetRenderDrawColor(renderer, 128, 128, 0, 255); // yellow
-            SDL_RenderClear(renderer);
-            SDL_RenderPresent(renderer);
+            let renderer = renderer::EguiSdl3Glow::new(window);
 
             return Ok(MyAppState {
                 window,
                 renderer,
-                cloned: false,
+                name: "??".to_owned(),
+                age: 14,
+                tasks: vec![
+                    Task {
+                        finished: false,
+                        text: "Get groceries".to_owned(),
+                    },
+                    Task {
+                        finished: false,
+                        text: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nunc ultrices rutrum turpis posuere dignissim. In diam lacus, semper eu magna.".to_owned(),
+                    },
+                    Task {
+                        finished: true,
+                        text: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nunc ultrices rutrum turpis posuere dignissim. In diam lacus, semper eu magna.".to_owned(),
+                    },
+                ]
             })
         }
     }
 
     fn iterate(&mut self) -> AppResult {
+        self.renderer.run(self.window, |ui: _| {
+            egui::CentralPanel::default().show_inside(ui, |ui| {
+                ui.heading("TODO");
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    ui.add(TaskList { tasks: &mut self.tasks });
+                    // ui.horizontal(|ui| {
+                    //     // let name_label = ui.label("Your name: ");
+                    //     ui.checkbox(&mut xx, "");
+                    //     ui.label("TODO item 1");
+                    //     // ui.text_edit_multiline(&mut self.name)
+                    //     //     .labelled_by(name_label.id);
+                    // });
+                    // ui.horizontal(|ui| {
+                    //     // let name_label = ui.label("Your name: ");
+                    //     ui.checkbox(&mut xx, "");
+                    //     ui.add(egui::Label::new("This item is very very long and contains lorem ipsum dolorem et dolorem et quelete").wrap());
+                    //     // ui.label("This item is very very long and contains lorem ipsum dolorem et dolorem et quelete").;
+                    //     // ui.text_edit_multiline(&mut self.name)
+                    //     //     .labelled_by(name_label.id);
+                    // });
+                });
+
+                // ui.image(egui::include_image!(
+                //     "../test.png"
+                // ));
+            });
+        });
+
         AppResult::Continue
     }
 
     fn event(&mut self, event: &SDL_Event) -> AppResult {
-        use sdl3_sys::events::{SDL_EVENT_QUIT, SDL_EVENT_KEY_UP, SDL_EVENT_KEY_DOWN, SDL_EVENT_WINDOW_RESIZED};
+        use sdl3_sys::events::SDL_EVENT_QUIT;
 
         match event.event_type() {
             SDL_EVENT_QUIT => return AppResult::Success,
-            SDL_EVENT_WINDOW_RESIZED => unsafe { println!("resize {:?}x{:?}", event.window.data1, event.window.data2) },
             _ => {},
         }
+
+        self.renderer.event(event);
 
         AppResult::Continue
     }
