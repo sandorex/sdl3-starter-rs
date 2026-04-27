@@ -1,6 +1,6 @@
-use sdl3_sys::render::SDL_Renderer;
+use std::collections::HashMap;
 
-pub use sdl3_sys::rect::{SDL_FRect, SDL_Rect};
+use sdl3_sys::render::SDL_Renderer;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Amount {
@@ -52,6 +52,193 @@ impl From<f32> for Amount {
     }
 }
 
+type RectTuple = (f32, f32, f32, f32);
+
+pub fn vertical(rect: RectTuple, amount: Amount) -> (RectTuple, RectTuple) {
+    let (x, y, w, h) = rect;
+    let (height, rem_height) = amount.calculate(h);
+
+    if !amount.negative() {
+        (
+            (x, y, w, height),
+            (x, y + height, w, rem_height),
+        )
+    } else {
+        (
+            (x, y + rem_height, w, height),
+            (x, y, w, rem_height)
+        )
+    }
+}
+
+pub fn horizontal(rect: RectTuple, amount: Amount) -> (RectTuple, RectTuple) {
+    let (x, y, w, h) = rect;
+    let (width, rem_width) = amount.calculate(w);
+
+    if !amount.negative() {
+        (
+            (x, y, width, h),
+            (x + width, y, rem_width, h),
+        )
+    } else {
+        (
+            (x + rem_width, y, width, h),
+            (x, y, rem_width, h)
+        )
+    }
+}
+
+pub fn margin_all(rect: RectTuple, up: f32, down: f32, left: f32, right: f32) -> RectTuple {
+    let (x, y, w, h) = rect;
+    (x + left, y + up, w - left - right, h - up - down)
+}
+
+pub fn margin(rect: RectTuple, margin: Amount) -> RectTuple {
+    let (_, _, w, h) = rect;
+    let (left, _) = margin.calculate(w);
+    let (up, _) = margin.calculate(h);
+
+    margin_all(rect, up, up, left, left)
+}
+
+pub fn center_v(rect: RectTuple, height: f32) -> RectTuple {
+    let (x, y, w, h) = rect;
+    if height > h {
+        // just return the original if its too small
+        return (x, y, w, h)
+    }
+
+    let up = (h - height) / 2.0;
+
+    (x, y + up, w, height)
+}
+
+pub fn center_h(rect: RectTuple, width: f32) -> RectTuple {
+    let (x, y, w, h) = rect;
+    if width > w {
+        // just return the original if its too small
+        return (x, y, w, h)
+    }
+
+    let left = (w - width) / 2.0;
+
+    (x + left, y, width, h)
+}
+
+/// Implements helpful functions for making layouts like splitting, margin etc
+pub trait RectLayout: Sized {
+    /// Splits at amount height-wise, returning both the slices
+    fn vertical(self, amount: Amount) -> (Self, Self);
+
+    /// Splits at amount width-wise, returning both the slices
+    fn horizontal(self, amount: Amount) -> (Self, Self);
+
+    /// Add margin (in pixels) to all sides
+    fn margin_all(self, up: f32, down: f32, left: f32, right: f32) -> Self;
+
+    /// Add margin to whole rect
+    fn margin(self, amount: Amount) -> Self;
+
+    /// Center height-wise vertically, if rect is too small then just returns itself
+    fn center_v(self, height: f32) -> Self;
+
+    /// Center width-wise vertically, if rect is too small then just returns itself
+    fn center_h(self, width: f32) -> Self;
+
+    /// Center a rect
+    fn centered(self, width: f32, height: f32) -> Self { self.center_h(width).center_v(height) }
+}
+
+/// Macro to implement rect layout for simple structs
+#[macro_export]
+macro_rules! impl_rect_layout {
+    ($type:ty, $x:tt, $y:tt, $w:tt, $h:tt $(, $num_type:ty)?) => {
+        impl RectLayout for $type {
+            fn vertical(self, amount: Amount) -> (Self, Self) {
+                let (rect1, rect2) = $crate::gui::vertical((self.$x as f32, self.$y as f32, self.$w as f32, self.$h as f32), amount);
+
+                (
+                    Self {
+                        $x: rect1.0 $(as $num_type)?,
+                        $y: rect1.1 $(as $num_type)?,
+                        $w: rect1.2 $(as $num_type)?,
+                        $h: rect1.3 $(as $num_type)?,
+                    },
+                    Self {
+                        $x: rect2.0 $(as $num_type)?,
+                        $y: rect2.1 $(as $num_type)?,
+                        $w: rect2.2 $(as $num_type)?,
+                        $h: rect2.3 $(as $num_type)?,
+                    },
+                )
+            }
+
+            fn horizontal(self, amount: Amount) -> (Self, Self) {
+                let (rect1, rect2) = $crate::gui::horizontal((self.$x as f32, self.$y as f32, self.$w as f32, self.$h as f32), amount);
+
+                (
+                    Self {
+                        $x: rect1.0 $(as $num_type)?,
+                        $y: rect1.1 $(as $num_type)?,
+                        $w: rect1.2 $(as $num_type)?,
+                        $h: rect1.3 $(as $num_type)?,
+                    },
+                    Self {
+                        $x: rect2.0 $(as $num_type)?,
+                        $y: rect2.1 $(as $num_type)?,
+                        $w: rect2.2 $(as $num_type)?,
+                        $h: rect2.3 $(as $num_type)?,
+                    },
+                )
+            }
+
+            fn margin_all(self, up: f32, down: f32, left: f32, right: f32) -> Self {
+                let ($x, $y, $w, $h) = $crate::gui::margin_all((self.$x as f32, self.$y as f32, self.$w as f32, self.$h as f32), up, down, left, right);
+
+                Self {
+                    $x: $x $(as $num_type)?,
+                    $y: $y $(as $num_type)?,
+                    $w: $w $(as $num_type)?,
+                    $h: $h $(as $num_type)?,
+                }
+            }
+
+            fn margin(self, amount: Amount) -> Self {
+                let ($x, $y, $w, $h) = $crate::gui::margin((self.$x as f32, self.$y as f32, self.$w as f32, self.$h as f32), amount);
+
+                Self {
+                    $x: $x $(as $num_type)?,
+                    $y: $y $(as $num_type)?,
+                    $w: $w $(as $num_type)?,
+                    $h: $h $(as $num_type)?,
+                }
+            }
+
+            fn center_v(self, height: f32) -> Self {
+                let ($x, $y, $w, $h) = $crate::gui::center_v((self.$x as f32, self.$y as f32, self.$w as f32, self.$h as f32), height);
+
+                Self {
+                    $x: $x $(as $num_type)?,
+                    $y: $y $(as $num_type)?,
+                    $w: $w $(as $num_type)?,
+                    $h: $h $(as $num_type)?,
+                }
+            }
+
+            fn center_h(self, width: f32) -> Self {
+                let ($x, $y, $w, $h) = $crate::gui::center_h((self.$x as f32, self.$y as f32, self.$w as f32, self.$h as f32), width);
+
+                Self {
+                    $x: $x $(as $num_type)?,
+                    $y: $y $(as $num_type)?,
+                    $w: $w $(as $num_type)?,
+                    $h: $h $(as $num_type)?,
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct Rect {
     pub x: f32,
@@ -69,178 +256,65 @@ impl Rect {
             height,
         }
     }
-
-    pub fn new_i(x: i32, y: i32, width: i32, height: i32) -> Self {
-        Self {
-            x: x as f32,
-            y: y as f32,
-            width: width as f32,
-            height: height as f32,
-        }
-    }
-
-    /// Splits rect vertically, returning two rects
-    pub fn vertical(self, amount: Amount) -> (Self, Self) {
-        let (height, rem_height) = amount.calculate(self.height);
-
-        if !amount.negative() {
-            (
-                Self {
-                    x: self.x,
-                    y: self.y,
-                    width: self.width,
-                    height,
-                },
-                Self {
-                    x: self.x,
-                    y: self.y + height,
-                    width: self.width,
-                    height: rem_height,
-                }
-            )
-        } else {
-            (
-                Self {
-                    x: self.x,
-                    y: self.y + rem_height,
-                    width: self.width,
-                    height: height,
-                },
-                Self {
-                    x: self.x,
-                    y: self.y,
-                    width: self.width,
-                    height: rem_height,
-                }
-            )
-        }
-    }
-
-    /// Reserves certain amount horizontally
-    pub fn horizontal(self, amount: Amount) -> (Self, Self) {
-        let (width, rem_width) = amount.calculate(self.width);
-
-        if !amount.negative() {
-            (
-                Self {
-                    x: self.x,
-                    y: self.y,
-                    width,
-                    height: self.height,
-                },
-                Self {
-                    x: self.x + width,
-                    y: self.y,
-                    width: rem_width,
-                    height: self.height,
-                }
-            )
-        } else {
-            (
-                Self {
-                    x: self.x + rem_width,
-                    y: self.y,
-                    width: width,
-                    height: self.height,
-                },
-                Self {
-                    x: self.x,
-                    y: self.y,
-                    width: rem_width,
-                    height: self.height,
-                }
-            )
-        }
-    }
-
-    /// Add margin to the rect but each margin can be different
-    pub fn margin_all(self, up: f32, down: f32, left: f32, right: f32) -> Self {
-        Self {
-            x: self.x + left,
-            y: self.y + up,
-            width: self.width - left - right,
-            height: self.height - up - down,
-        }
-    }
-
-    /// Add margin to whole rect
-    pub fn margin(self, margin: Amount) -> Self {
-        let (left, _) = margin.calculate(self.width);
-        let (up, _) = margin.calculate(self.height);
-
-        self.margin_all(up, up, left, left)
-    }
-
-    /// Center vertically
-    pub fn center_v(self, height: f32) -> Option<Self> {
-        let height = height.abs();
-
-        if height > self.height {
-            return None;
-        }
-
-        let up = (self.height - height) / 2.0;
-
-        Some(Self {
-            x: self.x,
-            y: self.y + up,
-            width: self.width,
-            height,
-        })
-    }
-
-    /// Center horizontally
-    pub fn center_h(self, width: f32) -> Option<Self> {
-        let width = width.abs();
-
-        if width > self.width {
-            return None;
-        }
-
-        let left = (self.width - width) / 2.0;
-
-        Some(Self {
-            x: self.x + left,
-            y: self.y,
-            width,
-            height: self.height,
-        })
-    }
-
-    /// Center a rect
-    pub fn centered(self, width: f32, height: f32) -> Option<Self> { self.center_h(width)?.center_v(height) }
 }
 
-impl From<SDL_FRect> for Rect {
-    fn from(value: SDL_FRect) -> Self {
-        Self {
-            x: value.x,
-            y: value.y,
-            width: value.w,
-            height: value.h,
-        }
+impl_rect_layout!(Rect, x, y, width, height);
+
+/// Helper to hold positions and which element they belong to
+#[derive(Default)]
+pub struct ClickMap {
+    width: u16,
+    height: u16,
+    points: HashMap<u32, String>,
+}
+
+impl ClickMap {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Resize the map
+    pub fn resize(&mut self, width: u16, height: u16) {
+        self.clear();
+        self.width = width;
+        self.height = height;
+    }
+
+    /// Clear all data
+    pub fn clear(&mut self) {
+        self.points.clear();
+    }
+
+    /// Set id for a specific point
+    pub fn set(&mut self, width: u16, height: u16, id: String) {
+        self.points.insert((width + height * self.width).into(), id);
+    }
+
+    /// Get id for a specific point
+    pub fn get(&self, x: u16, y: u16) -> Option<&str> {
+        self.points.get(&Into::<u32>::into(x + y * self.width)).map(|x| x.as_str())
     }
 }
 
-impl From<SDL_Rect> for Rect {
-    fn from(value: SDL_Rect) -> Self {
-        Self {
-            x: value.x as f32,
-            y: value.y as f32,
-            width: value.w as f32,
-            height: value.h as f32,
-        }
-    }
-}
-
-pub trait Element {
-    fn render(renderer: *mut SDL_Renderer, rect: Rect);
-}
+// pub trait Element {
+//     fn render(renderer: *mut SDL_Renderer, rect: SDL_FRect);
+// }
 
 #[cfg(test)]
 mod tests {
     use std::ops::Deref;
-    use super::{Rect, Amount};
+    use super::{Rect, Amount, RectLayout};
+
+    #[allow(unused)]
+    struct RectI32 {
+        pub x: i32,
+        pub y: i32,
+        pub w: i32,
+        pub h: i32,
+    }
+
+    // make sure the macro works properly for non-float structs
+    impl_rect_layout!(RectI32, x, y, w, h, i32);
 
     #[derive(Debug)]
     struct RectWrapper(Rect);
@@ -374,7 +448,7 @@ mod tests {
 
         // center
         rect_eq!(
-            Rect::new(0.0, 0.0, 200.0, 100.0).centered(100., 50.).unwrap(),
+            Rect::new(0.0, 0.0, 200.0, 100.0).centered(100., 50.),
             Rect::new(50., 25., 100., 50.)
         );
     }
